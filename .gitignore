@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment / secrets
+.env
+.env.example
+
+# Virtual environments (local to backend)
+venv/
+.venv/
+env/
+
+# Python packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local data outputs
+zoya_products.json
+zoya_products.csv
+
+# Logs
+*.log
