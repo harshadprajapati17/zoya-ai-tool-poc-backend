@@ -117,6 +117,76 @@ def parse_product_details(page_html: str) -> dict:
     return details
 
 
+def parse_product_media(page_html: str) -> dict:
+    """
+    Parse product media (thumbnails + main images) from an individual product page.
+
+    - product_thumbnails: unique images from the carousel indicators, deduped by
+      the li[data-slide-to] index, ordered by that index.
+    - product_images: all image URLs from the main carousel/zoom container.
+    """
+    soup = BeautifulSoup(page_html, "html.parser")
+
+    # --- product_thumbnails from carousel-indicator-container ---
+    thumbnail_urls_by_index: dict[int, str] = {}
+
+    indicator_container = soup.select_one(".carousel-indicator-container")
+    if indicator_container:
+        for li in indicator_container.select("li[data-slide-to]"):
+            slide_to = li.get("data-slide-to")
+            if slide_to is None:
+                continue
+            try:
+                idx = int(slide_to)
+            except ValueError:
+                continue
+
+            if idx in thumbnail_urls_by_index:
+                # we already have the first occurrence for this index
+                continue
+
+            img = li.select_one("img")
+            if not img:
+                continue
+
+            src = img.get("src") or img.get("data-src")
+            if not src:
+                continue
+
+            thumbnail_urls_by_index[idx] = src
+
+    product_thumbnails: list[str] = [
+        thumbnail_urls_by_index[i] for i in sorted(thumbnail_urls_by_index)
+    ]
+
+    # --- product_images from carousel-inner img-zoom-container ---
+    product_images: list[str] = []
+
+    # The parent might have both classes on the same element, or nested elements.
+    # We first try the most specific selector, then fall back to looser matches.
+    media_parents = soup.select(".carousel-inner.img-zoom-container")
+    if not media_parents:
+        # fall back: look for .img-zoom-container inside .carousel-inner
+        for outer in soup.select(".carousel-inner"):
+            media_parents.extend(outer.select(".img-zoom-container"))
+
+    seen_urls: set[str] = set()
+    for parent in media_parents:
+        # span elements that carry data-slide, which then contain one or more img tags
+        for span in parent.select("span[data-slide]"):
+            for img in span.select("img"):
+                src = img.get("src") or img.get("data-src")
+                if not src or src in seen_urls:
+                    continue
+                seen_urls.add(src)
+                product_images.append(src)
+
+    return {
+        "product_thumbnails": product_thumbnails,
+        "product_images": product_images,
+    }
+
+
 def scrape_all() -> list[dict]:
     all_products = []
     start = 0
@@ -171,6 +241,8 @@ def save_csv(products: list[dict], path: str = str(ROOT / "zoya_products.csv")):
         "diamond_caratage",
         "diamond_clarity",
         "diamond_colour",
+        "product_thumbnails",
+        "product_images",
     ]
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -211,8 +283,10 @@ if __name__ == "__main__":
             continue
 
         details = parse_product_details(page_html)
+        media = parse_product_media(page_html)
         product.update(details)
-        print(f"- ok ({len(details)} fields)")
+        product.update(media)
+        print(f"- ok ({len(details)} details, {len(media.get('product_thumbnails', []))} thumbs, {len(media.get('product_images', []))} images)")
         time.sleep(0.5)
 
     save_csv(products)

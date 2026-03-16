@@ -20,6 +20,9 @@ dist/
 # Local data outputs
 zoya_products.json
 zoya_products.csv
-
+zoya_stores_structured.csv
+zoya_stores.json
 # Logs
 *.log
+
+data/
